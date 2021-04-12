@@ -1,0 +1,212 @@
+#%RAML 1.0
+title: Courier Statistics API
+baseUri: https://anypoint.mulesoft.com/mq/stats/api/{version}
+version: v1
+protocols: [ HTTPS ]
+
+securitySchemes:
+ oauth_2_0: !include examples/oauth_2_0.yml
+
+schemas:
+  queueStatResponse: !include schemas/queueStatListResponse.json
+  queueStatListResponse: !include schemas/queueStatListResponse.json
+  exchangeStatResponse: !include schemas/exchangeStatListResponse.json
+  exchangeStatListResponse: !include schemas/exchangeStatListResponse.json
+  usageMetricListResponse: !include schemas/usageMetricListResponse.json
+
+traits:
+  multiDestinable:
+    queryParameters:
+      destinationIds:
+        description: Comma-separated list of destination IDs.
+        type: string
+        required: true
+        example: myDestination,myOtherDestination
+        default: myDestination
+  dateFilterable:
+    queryParameters:
+      startDate:
+        description: |
+          Start date of the desired time window. Note that the earliest start date one can specify is 15 months before the current time.
+        type: datetime
+        examples:
+          example1: Fri, 11 Jul 2015 08:49:37 GMT
+          example2: 2016-02-28T16:41:41.090Z
+        format: rfc2616
+
+      endDate:
+        description: |
+          End date of the desired time window.
+        type: datetime
+        examples:
+          example1: Fri, 11 Jul 2015 08:49:37 GMT
+          example2: 2016-02-28T16:41:41.090Z       
+        format: rfc2616
+      period:
+        description: |
+          The time granularity of metrics, expressed in seconds. 
+        type: integer
+        example: 600
+        minimum: 1
+        maximum: 86400
+  dateFilterableNaturalPeriod:
+    queryParameters:
+      startDate:
+        description: |
+          Start date of the desired time window. MQ usage data is retained for up to 2 years.
+        type: datetime
+        example: Fri, 11 Jul 2015 08:49:37 GMT
+        format: rfc2616
+      endDate:
+        description: |
+          End date of the desired time window.
+        type: datetime
+        example: Sat, 12 Jul 2015 08:49:37 GMT
+        format: rfc2616
+      period:
+        description: |
+          The granularity of data points. It can take values : 1minute, 15minutes, 1hour, 3hours, 1day, 7days, 1month, 3months
+        type: string
+        example: 1day
+  nonImplementable:
+    responses:
+      501:
+        description: |
+          This kind of request in the form it is performed is not implemented by this broker.
+  nonExistent:
+    responses:
+      404:
+        description: |
+          The requested resource in the form it is requested is not found on this broker.
+  falible:
+      responses:
+        500:
+          description: |
+            There has been an unexpected error performing this request.
+
+resourceTypes:
+  collection:
+    description: Collection of available <<resourcePathName>> in the broker.
+    get:
+      is: [nonImplementable, falible]
+      responses:
+        200:
+          body:
+            application/json:
+              example: |
+                <<exampleCollection>>
+              schema: <<exampleSchema>>
+        204:
+          description: |
+            There are no elements to return.
+
+  collection-item:
+    description: Entity representing a <<resourcePathName|!singularize>>
+    get:
+      is: [dateFilterable, nonImplementable, nonExistent, falible]
+      description: |
+        Get the <<resourcePathName|!singularize>> with <<resourcePathName|!singularize>>Id = {<<resourcePathName|!singularize>>Id}
+      responses:
+        200:
+          body:
+            application/json:
+              example: |
+                <<exampleItem>>
+              schema: <<exampleSchema>>
+        404:
+          body:
+            application/json:
+              example: |
+                {"message": "<<resourcePathName|!singularize>> not found" }
+
+securedBy: [oauth_2_0,null]
+/organizations:
+  /{organizationId}:
+    displayName: Usage Metrics by organization.
+    description: |
+     MQ Usage Metrics by date for an organization, 
+     across all environments. 
+     You can use this API to see number of api requests made,
+     number of messages received, number of billable units that depends on 
+     the number of messages delivered to subscribers of a queue, and 
+     message byte count sent & received by an organization. 
+    type: {collection : {
+      exampleCollection: !include examples/usageMetricListResponse.json,
+      exampleSchema: usageMetricListResponse
+    }}
+    is: [dateFilterableNaturalPeriod]
+
+    /environments:
+      /{environmentId}:
+        displayName: Usage Metrics by environment.
+        description: |
+          MQ usage metrics by date for an organization, for a particular envrionment.
+          You can use this API to see number of api requests made,
+          number of messages received, number of billable units that depends on 
+          the number of messages delivered to subscribers of a queue, and 
+          message byte count sent & received by an organization, filtered by an environment. 
+
+        type: {collection : {
+          exampleCollection: !include examples/usageMetricListResponse.json,
+          exampleSchema: usageMetricListResponse
+        }}
+        is: [dateFilterableNaturalPeriod]
+        
+        /regions:
+          /{regionId}:
+
+            /queues:
+              description: |
+                Realtime Stats for queues. 
+                Use this API to get current up-to-the-minute information about the number of visible and 
+                in-flight messages in a queue.
+              type: {collection : {
+                exampleCollection: !include examples/queueStatResponse.json,
+                exampleSchema: queueStatListResponse
+              }}
+              is: [multiDestinable]
+              /{queueId}:
+                description: |
+                 Historic stats for a queue. 
+                 Use this API to get historic stats for a queue, up to 15 months old.
+                 This stats is not real time and expect up to 10 minutes latency before data is published. 
+                 To keep the volume of data under control, historic data is retained at reduced levels of granularity. 
+                 Second level data points are retained for 3 hours, one minute data points are available for past 15 days, five minute data points up to 63 days and one hour data points for up to 15 months. 
+                uriParameters:
+                  queueId:
+                    description: |
+                      Identifier of a destination.
+                    example: myDestination
+                    displayName: Destination ID
+                    required: true
+                    type: string
+                    minLength: 1
+                    maxLength: 127
+
+                type: {collection-item : {
+                  exampleItem: !include examples/queueStatResponse.json,
+                  exampleSchema: queueStatResponse
+                }}
+
+            /exchanges:
+              /{exchangeId}:
+                description: |
+                 Historic Stats for Exchange. 
+                 Use this API to get historic stats for an exchange, up to 15 months old.
+                 This stats is not real time and expect up to 10 minutes latency before data is published. 
+                 To keep the volume of data under control, historic data is retained at reduced levels of granularity. 
+                 Second level data points are retained for 3 hours, one minute data points are available for past 15 days, five minute data points up to 63 days and one hour data points for up to 15 months. 
+                uriParameters:
+                  exchangeId:
+                    description: |
+                      Identifier of a destination.
+                    example: courier-int-test-exc-ser-top
+                    displayName: Destination ID
+                    required: true
+                    type: string
+                    minLength: 1
+                    maxLength: 127
+                type: {collection-item : {
+                  exampleItem: !include examples/exchangeStatResponse.json,
+                  exampleSchema: exchangeStatResponse
+                  }}
